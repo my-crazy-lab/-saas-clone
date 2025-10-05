@@ -1,0 +1,121 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  surveys   Survey[]
+  responses Response[]
+
+  @@map("users")
+}
+
+model Survey {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  isPublic    Boolean     @default(true)
+  isActive    Boolean     @default(true)
+  theme       Json?       // Store theme configuration as JSON
+  settings    Json?       // Store survey settings as JSON
+  expiresAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions Question[]
+  responses Response[]
+
+  @@map("surveys")
+}
+
+model Question {
+  id              String       @id @default(cuid())
+  surveyId        String
+  questionText    String
+  type            QuestionType
+  options         Json?        // Store question options as JSON
+  isRequired      Boolean      @default(false)
+  order           Int
+  conditionalLogic Json?       // Store conditional logic as JSON
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  survey  Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@map("questions")
+}
+
+model Response {
+  id          String   @id @default(cuid())
+  surveyId    String
+  userId      String?  // Optional for anonymous responses
+  isComplete  Boolean  @default(false)
+  metadata    Json?    // Store device/browser info, IP, etc.
+  submittedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  survey  Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  answers Answer[]
+
+  @@map("responses")
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  responseId String
+  questionId String
+  answerText String?  // For text-based answers
+  answerJson Json?    // For complex answers (multiple choice, ratings, etc.)
+  score      Float?   // For rating/numeric answers
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  response Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, questionId])
+  @@map("answers")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE_SINGLE
+  MULTIPLE_CHOICE_MULTIPLE
+  LIKERT_SCALE
+  SHORT_TEXT
+  LONG_TEXT
+  RATING
+  NUMBER
+  DATE
+  TIME
+  EMAIL
+  URL
+}

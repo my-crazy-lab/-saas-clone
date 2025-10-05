@@ -1,0 +1,140 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(VIEWER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  accounts     Account[]
+  metricsCache MetricsCache[]
+
+  @@map("users")
+}
+
+model Account {
+  id           String          @id @default(cuid())
+  userId       String          @map("user_id")
+  provider     PaymentProvider
+  providerId   String          @map("provider_id") // Stripe account ID or PayPal merchant ID
+  accessToken  String?         @map("access_token")
+  refreshToken String?         @map("refresh_token")
+  connectedAt  DateTime        @default(now()) @map("connected_at")
+  isActive     Boolean         @default(true) @map("is_active")
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@unique([userId, provider])
+  @@map("accounts")
+}
+
+model Subscription {
+  id           String             @id @default(cuid())
+  accountId    String             @map("account_id")
+  customerId   String             @map("customer_id") // Customer ID from payment provider
+  planId       String             @map("plan_id") // Plan/Product ID from payment provider
+  planName     String?            @map("plan_name")
+  startDate    DateTime           @map("start_date")
+  endDate      DateTime?          @map("end_date")
+  status       SubscriptionStatus
+  price        Float
+  currency     String             @default("USD")
+  billingCycle BillingCycle       @map("billing_cycle")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([accountId, customerId, planId])
+  @@map("subscriptions")
+}
+
+model Transaction {
+  id             String          @id @default(cuid())
+  subscriptionId String          @map("subscription_id")
+  type           TransactionType
+  amount         Float
+  currency       String          @default("USD")
+  date           DateTime
+  description    String?
+  providerTxnId  String?         @map("provider_txn_id") // Transaction ID from payment provider
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([providerTxnId])
+  @@map("transactions")
+}
+
+model MetricsCache {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  dateRange String   @map("date_range") // e.g., "2024-01", "2024-01-01_2024-01-31"
+  mrr       Float?
+  churn     Float? // Percentage as decimal (0.05 = 5%)
+  ltv       Float?
+  activeUsers Int?   @map("active_users")
+  totalRevenue Float? @map("total_revenue")
+  totalRefunds Float? @map("total_refunds")
+  cachedAt  DateTime @default(now()) @map("cached_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateRange])
+  @@map("metrics_cache")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  VIEWER
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+  TRIALING
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+  WEEKLY
+  DAILY
+}
+
+enum TransactionType {
+  CHARGE
+  REFUND
+  PARTIAL_REFUND
+}
